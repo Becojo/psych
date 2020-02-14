@@ -345,19 +345,11 @@ module Psych
       filename = legacy_filename
     end
 
-    result = parse(yaml, filename: filename)
-    return fallback unless result
+    safe_load_stream(yaml, permitted_classes: permitted_classes, permitted_symbols: permitted_symbols, aliases: aliases, filename: filename, fallback: fallback, symbolize_names: symbolize_names, freeze: freeze) do |node|
+      return node
+    end
 
-    class_loader = ClassLoader::Restricted.new(permitted_classes.map(&:to_s),
-                                               permitted_symbols.map(&:to_s))
-    scanner      = ScalarScanner.new class_loader
-    visitor = if aliases
-                Visitors::ToRuby.new scanner, class_loader, symbolize_names: symbolize_names, freeze: freeze
-              else
-                Visitors::NoAliasRuby.new scanner, class_loader, symbolize_names: symbolize_names, freeze: freeze
-              end
-    result = visitor.accept result
-    result
+    fallback
   end
 
   ###
@@ -565,6 +557,35 @@ module Psych
 
     return fallback if result.is_a?(Array) && result.empty?
     result
+  end
+
+  ###
+  # Safely load multiple documents given in +yaml+. Returns the parsed documents
+  # as a list. If a block is given, each document will be converted to Ruby.
+  #
+  def self.safe_load_stream yaml, permitted_classes: [], permitted_symbols: [], aliases: false, filename: nil, fallback: [], symbolize_names: false, freeze: false
+    result = parse(yaml, filename: filename)
+    return fallback unless result
+
+    class_loader = ClassLoader::Restricted.new(permitted_classes.map(&:to_s),
+                                               permitted_symbols.map(&:to_s))
+    scanner      = ScalarScanner.new class_loader
+
+    visitor = if aliases
+                Visitors::ToRuby.new scanner, class_loader, symbolize_names: symbolize_names, freeze: freeze
+              else
+                Visitors::NoAliasRuby.new scanner, class_loader, symbolize_names: symbolize_names, freeze: freeze
+    end
+
+    if block_given?
+      parse_stream(yaml, filename: filename) do |node|
+        yield visitor.accept(node)
+      end
+    else
+      parse_stream(yaml, filename: filename).children.map do |children|
+        visitor.accept(children)
+      end
+    end
   end
 
   ###

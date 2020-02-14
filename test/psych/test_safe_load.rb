@@ -155,6 +155,11 @@ module Psych
       assert_raises(Psych::SyntaxError) { Psych.safe_load("--- `") }
     end
 
+    def test_load_partial
+      rb = Psych.safe_load("--- foo\n...\n--- `")
+      assert_equal 'foo', rb
+    end
+
     private
 
     def cycle object, permitted_classes: []
